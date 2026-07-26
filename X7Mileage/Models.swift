@@ -10,10 +10,10 @@ struct ContractSettings: Codable, Equatable {
     var excessPencePerMile: Double
 
     static let standard = ContractSettings(
-        startDate: Calendar.current.date(from: DateComponents(year: 2024, month: 1, day: 1)) ?? Date(),
+        startDate: Calendar.current.date(from: DateComponents(year: 2026, month: 3, day: 11)) ?? Date(),
         termMonths: 48,
         annualAllowanceMiles: 23_000,
-        startOdometer: 0,
+        startOdometer: 26,
         excessPencePerMile: 15.75
     )
 

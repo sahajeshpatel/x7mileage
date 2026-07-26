@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var store: MileageStore
     @State private var showingResetAlert = false
+    @FocusState private var numberFieldFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -51,6 +52,14 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        numberFieldFocused = false
+                    }
+                }
+            }
             .alert("Reset all data?", isPresented: $showingResetAlert) {
                 Button("Cancel", role: .cancel) { }
                 Button("Reset", role: .destructive) {
@@ -74,6 +83,7 @@ struct SettingsView: View {
                 .keyboardType(.decimalPad)
                 .multilineTextAlignment(.trailing)
                 .frame(width: 110)
+                .focused($numberFieldFocused)
             Text(suffix)
                 .foregroundStyle(.secondary)
         }

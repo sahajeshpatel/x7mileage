@@ -12,10 +12,12 @@ struct DashboardView: View {
                     if let snap = store.latestSnapshot {
                         headline(snap)
                         headlineStats(snap)
-                        allowanceBar(snap)
-                        projection(snap)
-                        if store.sortedEntries.count > 1 {
-                            chart
+                        LazyVGrid(columns: panelColumns, alignment: .leading, spacing: 16) {
+                            allowanceBar(snap)
+                            projection(snap)
+                            if store.sortedEntries.count > 1 {
+                                chart
+                            }
                         }
                     } else {
                         emptyState
@@ -38,6 +40,12 @@ struct DashboardView: View {
                 EntryEditor(entry: nil)
             }
         }
+    }
+
+    /// One column on a phone, two or more once the canvas is wide enough
+    /// (landscape, the Duo's unfolded display, iPad).
+    private var panelColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: 260), spacing: 16, alignment: .top)]
     }
 
     // MARK: - Sections

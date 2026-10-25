@@ -131,4 +131,49 @@ final class MileageStore: ObservableObject {
         guard let latest = latestEntry else { return nil }
         return snapshot(for: latest)
     }
+
+    // MARK: - Backup
+
+    /// A portable snapshot of everything the app holds. Kept separate from the
+    /// on-disk Payload so the backup format stays stable even if the storage
+    /// layer changes later.
+    struct Backup: Codable {
+        var formatVersion: Int = 1
+        var exportedAt: Date = Date()
+        var settings: ContractSettings
+        var entries: [MileageEntry]
+    }
+
+    private static func backupEncoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }
+
+    private static func backupDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
+
+    func exportData() throws -> Data {
+        let backup = Backup(settings: settings, entries: sortedEntries)
+        return try Self.backupEncoder().encode(backup)
+    }
+
+    /// Replaces the contract settings and every reading with the backup's contents.
+    @discardableResult
+    func replaceAll(withBackupData data: Data) throws -> Int {
+        let backup = try Self.backupDecoder().decode(Backup.self, from: data)
+        settings = backup.settings
+        entries = backup.entries
+        return backup.entries.count
+    }
+
+    var suggestedBackupFilename: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return "X7Mileage-\(formatter.string(from: Date()))"
+    }
 }

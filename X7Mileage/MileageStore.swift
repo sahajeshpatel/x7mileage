@@ -1,38 +1,149 @@
 import Foundation
 import Combine
+import CoreData
+import SwiftData
 
 final class MileageStore: ObservableObject {
 
-    @Published var settings: ContractSettings { didSet { save() } }
-    @Published var entries: [MileageEntry] { didSet { save() } }
+    @Published var settings: ContractSettings { didSet { if !isReloading { persistSettings() } } }
+    @Published var entries: [MileageEntry] { didSet { if !isReloading { persistEntries() } } }
 
     // MARK: - Persistence
 
-    private struct Payload: Codable {
-        var settings: ContractSettings
-        var entries: [MileageEntry]
-    }
+    /// SwiftData container mirrored to the user's private CloudKit database, so
+    /// readings and settings sync between iPhone, iPad and Mac.
+    let container: ModelContainer
+    private var context: ModelContext { container.mainContext }
 
-    private static var fileURL: URL {
+    /// Set while copying records into the published properties, so that the
+    /// `didSet` observers don't write the same values straight back.
+    private var isReloading = false
+    private var remoteChangeTask: Task<Void, Never>?
+
+    /// The JSON file used before CloudKit sync existed. Imported once, then renamed.
+    private static var legacyFileURL: URL {
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         return dir.appendingPathComponent("x7-mileage.json")
     }
 
+    private struct LegacyPayload: Codable {
+        var settings: ContractSettings
+        var entries: [MileageEntry]
+    }
+
     init() {
-        if let data = try? Data(contentsOf: Self.fileURL),
-           let payload = try? JSONDecoder().decode(Payload.self, from: data) {
-            self.settings = payload.settings
-            self.entries = payload.entries
-        } else {
-            self.settings = .standard
-            self.entries = []
+        let schema = Schema([StoredEntry.self, StoredSettings.self])
+        let configuration = ModelConfiguration(schema: schema, cloudKitDatabase: .automatic)
+        do {
+            container = try ModelContainer(for: schema, configurations: [configuration])
+        } catch {
+            // Fall back to a local-only store rather than refusing to launch.
+            let local = ModelConfiguration(schema: schema, cloudKitDatabase: .none)
+            container = try! ModelContainer(for: schema, configurations: [local])
+        }
+
+        settings = .standard
+        entries = []
+
+        migrateLegacyFileIfNeeded()
+        reloadFromStore()
+        observeRemoteChanges()
+    }
+
+    deinit {
+        remoteChangeTask?.cancel()
+    }
+
+    /// Re-reads everything from SwiftData, e.g. after CloudKit imports changes
+    /// made on another device.
+    private func reloadFromStore() {
+        let storedEntries = (try? context.fetch(FetchDescriptor<StoredEntry>())) ?? []
+        let storedSettings = (try? context.fetch(
+            FetchDescriptor<StoredSettings>(sortBy: [SortDescriptor(\.modifiedAt, order: .reverse)])
+        )) ?? []
+
+        // CloudKit can't enforce uniqueness, so two devices may each have created
+        // a copy of the same record. Keep one and remove the rest.
+        var seen = Set<UUID>()
+        var uniqueEntries: [MileageEntry] = []
+        for record in storedEntries {
+            if seen.insert(record.id).inserted {
+                uniqueEntries.append(record.entry)
+            } else {
+                context.delete(record)
+            }
+        }
+        for duplicate in storedSettings.dropFirst() {
+            context.delete(duplicate)
+        }
+        if context.hasChanges { try? context.save() }
+
+        isReloading = true
+        let newSettings = storedSettings.first?.settings ?? .standard
+        if newSettings != settings { settings = newSettings }
+        let sortedNew = uniqueEntries.sorted { $0.date < $1.date }
+        if sortedNew != sortedEntries { entries = sortedNew }
+        isReloading = false
+    }
+
+    private func observeRemoteChanges() {
+        remoteChangeTask = Task { [weak self] in
+            for await _ in NotificationCenter.default.notifications(named: .NSPersistentStoreRemoteChange) {
+                self?.reloadFromStore()
+            }
         }
     }
 
-    private func save() {
-        let payload = Payload(settings: settings, entries: entries)
-        guard let data = try? JSONEncoder().encode(payload) else { return }
-        try? data.write(to: Self.fileURL, options: .atomic)
+    private func persistSettings() {
+        let stored = (try? context.fetch(
+            FetchDescriptor<StoredSettings>(sortBy: [SortDescriptor(\.modifiedAt, order: .reverse)])
+        )) ?? []
+        if let record = stored.first {
+            record.update(from: settings)
+        } else {
+            context.insert(StoredSettings(settings))
+        }
+        try? context.save()
+    }
+
+    /// Applies the difference between `entries` and the stored records.
+    private func persistEntries() {
+        let stored = (try? context.fetch(FetchDescriptor<StoredEntry>())) ?? []
+        let current = Dictionary(entries.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+        var existing = Set<UUID>()
+
+        for record in stored {
+            if let entry = current[record.id] {
+                existing.insert(record.id)
+                if record.entry != entry { record.update(from: entry) }
+            } else {
+                context.delete(record)
+            }
+        }
+        for entry in current.values where !existing.contains(entry.id) {
+            context.insert(StoredEntry(entry))
+        }
+        try? context.save()
+    }
+
+    /// Copies data from the old on-device JSON file into SwiftData the first time
+    /// this version runs, then renames the file so it isn't imported again.
+    private func migrateLegacyFileIfNeeded() {
+        let url = Self.legacyFileURL
+        guard let data = try? Data(contentsOf: url),
+              let payload = try? JSONDecoder().decode(LegacyPayload.self, from: data) else { return }
+
+        // Use an old timestamp so settings edited on any device take priority.
+        context.insert(StoredSettings(payload.settings, modifiedAt: .distantPast))
+        for entry in payload.entries {
+            context.insert(StoredEntry(entry))
+        }
+        do {
+            try context.save()
+            try FileManager.default.moveItem(at: url, to: url.appendingPathExtension("migrated"))
+        } catch {
+            // Leave the file in place; duplicates are removed on reload if it's imported again.
+        }
     }
 
     // MARK: - Entry management
@@ -135,7 +246,7 @@ final class MileageStore: ObservableObject {
     // MARK: - Backup
 
     /// A portable snapshot of everything the app holds. Kept separate from the
-    /// on-disk Payload so the backup format stays stable even if the storage
+    /// SwiftData models so the backup format stays stable even if the storage
     /// layer changes later.
     struct Backup: Codable {
         var formatVersion: Int = 1

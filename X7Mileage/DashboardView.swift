@@ -25,7 +25,7 @@ struct DashboardView: View {
                 }
                 .padding()
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Color.groupedBackground)
             .navigationTitle("X7 Mileage")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -68,7 +68,7 @@ struct DashboardView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
-        .background(RoundedRectangle(cornerRadius: 20).fill(Color(.secondarySystemGroupedBackground)))
+        .background(RoundedRectangle(cornerRadius: 20).fill(Color.cardBackground))
     }
 
     private func headlineStats(_ snap: MileageSnapshot) -> some View {
@@ -229,7 +229,7 @@ struct StatCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemGroupedBackground)))
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.cardBackground))
     }
 }
 
@@ -246,7 +246,7 @@ struct Card<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemGroupedBackground)))
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.cardBackground))
     }
 }
 
@@ -265,5 +265,27 @@ struct Row: View {
                 .foregroundStyle(tint)
         }
         .padding(.vertical, 10)
+    }
+}
+
+// MARK: - Platform colours
+
+extension Color {
+    /// Page background behind the dashboard cards.
+    static var groupedBackground: Color {
+        #if os(macOS)
+        Color(nsColor: .windowBackgroundColor)
+        #else
+        Color(uiColor: .systemGroupedBackground)
+        #endif
+    }
+
+    /// Fill for the individual dashboard cards.
+    static var cardBackground: Color {
+        #if os(macOS)
+        Color(nsColor: .controlBackgroundColor)
+        #else
+        Color(uiColor: .secondarySystemGroupedBackground)
+        #endif
     }
 }

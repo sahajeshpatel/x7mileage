@@ -75,17 +75,20 @@ struct SettingsView: View {
                         showingResetAlert = true
                     }
                 } footer: {
-                    Text("Everything is stored on this device only. Nothing is uploaded.")
+                    Text("Your data is stored in your private iCloud account and syncs across your devices.")
                 }
             }
+            .formStyle(.grouped)
             .navigationTitle("Settings")
             .toolbar {
+                #if os(iOS)
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("Done") {
                         numberFieldFocused = false
                     }
                 }
+                #endif
             }
             .alert("Reset all data?", isPresented: $showingResetAlert) {
                 Button("Cancel", role: .cancel) { }
@@ -178,7 +181,10 @@ struct SettingsView: View {
             Text(label)
             Spacer()
             TextField(label, value: value, format: format)
+                .labelsHidden()
+                #if os(iOS)
                 .keyboardType(.decimalPad)
+                #endif
                 .multilineTextAlignment(.trailing)
                 .frame(width: 110)
                 .focused($numberFieldFocused)

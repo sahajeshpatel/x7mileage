@@ -32,11 +32,13 @@ struct EntriesView: View {
             }
             .navigationTitle("Readings")
             .toolbar {
+                #if os(iOS)
                 if !store.entries.isEmpty {
                     ToolbarItem(placement: .topBarLeading) {
                         EditButton()
                     }
                 }
+                #endif
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showingNew = true
@@ -123,7 +125,10 @@ struct EntryEditor: View {
                         Text("Mileage")
                         Spacer()
                         TextField("miles", text: $odometerText)
+                            .labelsHidden()
+                            #if os(iOS)
                             .keyboardType(.decimalPad)
+                            #endif
                             .multilineTextAlignment(.trailing)
                             .frame(width: 120)
                             .focused($odometerFocused)
@@ -149,8 +154,15 @@ struct EntryEditor: View {
                     }
                 }
             }
+            .formStyle(.grouped)
+            #if os(macOS)
+            // Sheets on the Mac size to their content, which squeezes a Form.
+            .frame(minWidth: 420, minHeight: 420)
+            #endif
             .navigationTitle(entry == nil ? "New reading" : "Edit reading")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -166,10 +178,12 @@ struct EntryEditor: View {
                     }
                     .disabled(odometer <= 0)
                 }
+                #if os(iOS)
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("Done") { odometerFocused = false }
                 }
+                #endif
             }
             .onAppear {
                 guard !loaded else { return }

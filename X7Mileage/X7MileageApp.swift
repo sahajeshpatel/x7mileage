@@ -8,7 +8,16 @@ struct X7MileageApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(store)
+                #if os(macOS)
+                // A fixed minimum keeps the window from resizing itself to fit
+                // content whose size depends on the window width (the adaptive grid).
+                .frame(minWidth: 640, minHeight: 560)
+                #endif
         }
+        #if os(macOS)
+        .defaultSize(width: 900, height: 720)
+        .windowResizability(.contentMinSize)
+        #endif
     }
 }
 
